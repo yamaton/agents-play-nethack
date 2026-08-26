@@ -1,3 +1,5 @@
+
+
 # Claude Code Plays NetHack
 
 https://github.com/user-attachments/assets/090a868a-2536-4936-80aa-cd6365d9ee07
@@ -81,7 +83,7 @@ Continue playing NetHack. Check documents in this project, then proceed with the
 - Claude handles all game mechanics - just give the high-level instruction
 
 ### Getting Started
-1. **Initialize game**: `./run --init` to start fresh session
+1. **Initialize game**: `./run --init` to start fresh session, then manually select `v`, `h`, `l`, and `y`
 2. **Check current state**: `./run` (no arguments) to see game screen
 3. **Review strategy**: Read `CLAUDE.md` for current mission status and learned tactics
 4. **Basic movement**: Use `./run h j k l` for west/south/north/east movement
