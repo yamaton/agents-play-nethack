@@ -2,17 +2,13 @@
 """Format NetHack screen output for LLM consumption.
 
 Processes raw tmux capture output into:
-1. Map area (left 80 columns) with blank lines squeezed
+1. Original screen, preserving all columns and internal blank rows
 2. Neighborhood of @ (5x5 grid + labeled 3x3)
-3. Overlay text (inventory, menus from right of column 80)
 """
 
-import re
 import sys
 
 MAP_WIDTH = 80
-
-GAP_RE = re.compile(r" {2,}")
 
 STATUS_MARKERS = ["Dlvl:", "HP:", "Pw:", "AC:", "Xp:"]
 
@@ -31,47 +27,6 @@ def is_map_line(line):
     has_player = "@" in s
     has_stairs = ">" in s or "<" in s
     return has_wall or has_corridor or has_player or has_stairs
-
-
-def split_output(lines):
-    """Split each line into map area (left) and overlay text (right).
-
-    NetHack's dungeon map never extends past MAP_WIDTH, so anything beyond
-    it is a menu/status overlay. Popup boxes are sometimes positioned a few
-    columns before MAP_WIDTH, though, so a straight cut there can slice a
-    menu word in half (e.g. "Coins" -> "Co" + "ins"). Instead, split at the
-    start of the rightmost run of 2+ spaces that ends at or before
-    MAP_WIDTH, which is the actual gap between map content and the overlay.
-
-    Returns (map_area_lines, overlay_lines) where overlay_lines contains
-    only non-empty text found beyond the split point.
-    """
-    map_area = []
-    overlay = []
-    for line in lines:
-        split_at = MAP_WIDTH
-        if len(line) > MAP_WIDTH:
-            gap_ends = [m.end() for m in GAP_RE.finditer(line) if m.end() <= MAP_WIDTH]
-            if gap_ends:
-                split_at = max(gap_ends)
-        map_area.append(line[:split_at].rstrip())
-        right = line[split_at:].strip()
-        if right:
-            overlay.append(right)
-    return map_area, overlay
-
-
-def squeeze_blanks(lines):
-    """Collapse consecutive blank lines into a single blank line."""
-    result = []
-    prev_blank = False
-    for line in lines:
-        is_blank = not line.strip()
-        if is_blank and prev_blank:
-            continue
-        result.append(line)
-        prev_blank = is_blank
-    return result
 
 
 def extract_map(lines):
@@ -129,22 +84,19 @@ def print_neighborhood(map_lines):
 
 def main():
     raw_lines = sys.stdin.read().splitlines()
-    map_area, overlay = split_output(raw_lines)
-
-    # 1. Print map area with squeezed blank lines
-    for line in squeeze_blanks(map_area):
+    # Trim only unused terminal rows at the end. Whitespace between rooms
+    # is not a reliable menu boundary; retain the entire original screen.
+    while raw_lines and not raw_lines[-1].strip():
+        raw_lines.pop()
+    for line in raw_lines:
         print(line)
 
-    # 2. Neighborhood (only when @ is visible)
-    extracted = extract_map(map_area)
-    if extracted and find_player(extracted):
-        print_neighborhood(extracted)
-
-    # 3. Overlay text (inventory, menus, etc.)
-    if overlay:
-        print("--- Text Panel (modal: send Space/Escape to close it BEFORE moving) ---")
-        for line in overlay:
-            print(line)
+    # Right-hand text makes the input mode uncertain. Do not invent a modal
+    # label or a neighborhood while such a panel is visible.
+    if not any(line[MAP_WIDTH:].strip() for line in raw_lines):
+        extracted = extract_map(raw_lines)
+        if extracted and find_player(extracted):
+            print_neighborhood(extracted)
 
 
 if __name__ == "__main__":
