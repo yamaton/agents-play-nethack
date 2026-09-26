@@ -46,6 +46,9 @@ def gameplay_screen():
 class PlayerDetectionTests(unittest.TestCase):
     def test_cursor_selects_player_instead_of_first_at_sign(self):
         output = format_screen(gameplay_screen(), "--cursor", "8", "4")
+        self.assertIn("--- Neighborhood: player at x=9, y=3 ---", output)
+        self.assertIn("      7  8  9 10 11\n", output)
+        self.assertIn(" y=3     d  @  e   \n", output)
         self.assertIn("NW=a N=b NE=c W=d E=e SW=f S=g SE=h", output)
 
     def test_no_cursor_does_not_guess(self):
@@ -73,6 +76,8 @@ class PlayerDetectionTests(unittest.TestCase):
         lines[0] = "message"
         lines[1] = "@."
         output = format_screen(lines, "--cursor", "0", "1")
+        self.assertIn("player at x=1, y=0", output)
+        self.assertNotIn("y=-", output)
         self.assertIn("NW=  N=  NE=  W=  E=.", output)
 
 
@@ -154,7 +159,7 @@ if command == "display-message":
     def test_optional_neighborhood_after_action_does_not_send_flag(self):
         result = self.run_interface("--neighborhood", "h")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("--- Neighborhood of @ ---", result.stdout)
+        self.assertIn("--- Neighborhood: player at x=9, y=3 ---", result.stdout)
         self.assertEqual([call[-1] for call in self.calls() if call[0] == "set-buffer"], ["h"])
 
     def test_multiple_actions_require_explicit_batch_before_any_input(self):
@@ -173,7 +178,7 @@ if command == "display-message":
     def test_optional_neighborhood_applies_to_each_batch_capture(self):
         result = self.run_interface("--neighborhood", "--batch", "h", "j")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.count("--- Neighborhood of @ ---"), 2)
+        self.assertEqual(result.stdout.count("--- Neighborhood: player at x=9, y=3 ---"), 2)
 
     def test_batch_stops_on_failed_action(self):
         self.env["TEST_FAIL"] = "paste-buffer"

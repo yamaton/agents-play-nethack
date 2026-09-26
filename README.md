@@ -69,7 +69,11 @@ The default output is just the original screen. For extra spatial detail, put
 `./run --neighborhood --batch o h`. The option applies only to that invocation.
 
 With this option, when the cursor points to `@` in the standard tty map and the
-status is visible, the formatter can append a 5×5 neighborhood and labeled adjacent cells.
+status is visible, the formatter can append a 5×5 neighborhood with player
+coordinates, column and row labels, and labeled adjacent cells. Coordinates
+match NetHack’s `/` listings with `whatis_coord:m`: X runs from 1 to 79 west
+to east, and Y from 0 to 20 north to south. Positions outside the map have
+blank labels and cells. The original screen is unchanged.
 Recognized prompts, pagers, and right-hand panels suppress this helper. It also
 stays absent when the cursor, layout, or player glyph cannot be verified.
 Always read the actual prompt before choosing an action.

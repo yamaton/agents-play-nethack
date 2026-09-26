@@ -5,7 +5,7 @@
 # ///
 """Preserve a NetHack tty capture and append a cursor-verified neighborhood.
 
-The default tty map occupies columns 0..79 and screen rows 1..21. Without
+The default tty map occupies columns 0..78 and screen rows 1..21. Without
 cursor metadata or a recognizable gameplay screen, show only the capture.
 """
 
@@ -13,7 +13,7 @@ import argparse
 import re
 import sys
 
-MAP_WIDTH = 80
+MAP_WIDTH = 79
 MAP_TOP = 1
 MAP_HEIGHT = 21
 STATUS_RE = re.compile(r"HP:\s*\d+\s*\(\s*\d+\).*Pw:.*AC:")
@@ -52,10 +52,14 @@ def print_neighborhood(lines, pos):
     row, col = pos
     map_lines = [line[:MAP_WIDTH] for line in lines[MAP_TOP:MAP_TOP + MAP_HEIGHT]]
     row -= MAP_TOP
-    print("--- Neighborhood of @ ---")
+    # tty columns are zero-based; NetHack's map X starts at 1, Y at 0.
+    print(f"--- Neighborhood: player at x={col + 1}, y={row} ---")
+    columns = [str(x + 1) if 0 <= x < MAP_WIDTH else "" for x in range(col - 2, col + 3)]
+    print("     " + " ".join(f"{x:>2}" for x in columns))
     for dr in range(-2, 3):
-        cells = " ".join(cell_at(map_lines, row + dr, col + dc) for dc in range(-2, 3))
-        print(f"W {cells} E" if dr == 0 else f"  {cells}")
+        cells = " ".join(f"{cell_at(map_lines, row + dr, col + dc):>2}" for dc in range(-2, 3))
+        label = f"y={row + dr}" if 0 <= row + dr < MAP_HEIGHT else ""
+        print(f"{label:>4} {cells}")
     labels = [
         ("NW", -1, -1), ("N", -1, 0), ("NE", -1, 1),
         ("W", 0, -1), ("E", 0, 1),
