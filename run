@@ -124,7 +124,7 @@ case "${1:-}" in
         fi
         tmux new-session -d -s "$SESSION_NAME" -x "$SESSION_WIDTH" -y "$SESSION_HEIGHT" \
             -e 'NETHACKOPTIONS=whatis_coord:m,windowtype:tty' -- \
-            nethack -u Claude -p valkyrie -r human
+            nethack -u Agent -p valkyrie -r human
         tmux set-option -t "$SESSION_NAME" window-size manual
         tmux set-option -p -t "$SESSION_NAME" remain-on-exit on
         sleep 1

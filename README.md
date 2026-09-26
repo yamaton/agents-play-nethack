@@ -42,8 +42,8 @@ Start with a prompt such as:
 ./run --cleanup          # Kill the tmux session
 ```
 
-`--init` requests a human Valkyrie but may restore an existing save. It does
-not delete save files or automatically dismiss startup prompts. Read the
+`--init` requests a human Valkyrie named `Agent` but may restore an existing
+save. It does not delete save files or automatically dismiss startup prompts. Read the
 screen and answer each prompt as it appears. Plain `./run` never starts or
 resets a session; if none exists, initialize explicitly.
 
@@ -97,9 +97,11 @@ Without `--cursor`, the formatter preserves the screen and omits the neighborhoo
 ## Session persistence and monitoring
 
 The detached tmux game survives individual agent shell calls. The historical
-session name `claude-nethack` and character name `Claude` are retained for
-compatibility with existing sessions and saves; they do not require a particular
-agent harness. Only one controller should send input to a game at a time.
+session name `claude-nethack` is retained for compatibility with existing
+sessions; it does not require a particular agent harness. New games use the
+character name `Agent`. Initialization looks for saves under that name, so
+older `Claude` saves are not automatically restored. Only one controller should
+send input to a game at a time.
 
 Initialization and action calls enable tmux's `remain-on-exit` for the game
 pane so its final screen and exit status remain available. After the game
