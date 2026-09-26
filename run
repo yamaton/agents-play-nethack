@@ -1,41 +1,53 @@
 #!/bin/bash
 set -euo pipefail
 
-# --- Configuration ---
 SESSION_NAME="claude-nethack"
-# Fixed pane size (window-size=manual below), wide enough that NetHack
-# renders menus as a side panel past column 80 instead of a popup that
-# overwrites map content. Deliberately independent of any attached client's
-# terminal size, since tmux's default window-size=latest would otherwise
-# resize the pane (and change how NetHack lays out menus) every time a
-# viewer with a different terminal width attaches.
 SESSION_WIDTH=154
 SESSION_HEIGHT=60
-NETHACK_OPTIONS_ENV="NETHACKOPTIONS=whatis_coord:m,windowtype:tty"
-NETHACK_COMMAND="nethack -u Claude -p valkyrie -r human"
 KEY_DELAY=0.3
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Send input by pasting a buffer into the pane instead of send-keys:
-# since tmux 3.7, send-keys is refused with "client is read-only" when the
-# only attached client is a read-only viewer (tmux attach -r), while
-# paste-buffer goes straight to the pane. Pasting takes literal characters,
-# so named keys must be translated.
-#
-# Escape is the one key that can't go through paste-buffer: tmux mangles a
-# lone ESC byte (0x1b) in a pasted buffer into the two-character literal
-# text "^[" instead of delivering the real control byte, so NetHack never
-# sees an actual Escape keypress. send-keys delivers a genuine ESC, at the
-# cost of failing if a read-only client is attached (see above).
+usage() {
+    cat <<'EOF'
+NetHack tmux Interface - Claude Code NetHack Project
+
+USAGE:
+    ./run                       Observe an existing game (no input sent)
+    ./run ACTION                Send one action, then observe
+    ./run --batch ACTION...     Explicitly send a sequence, capturing each action
+    ./run --init                Restart the tmux session and launch NetHack
+    ./run --cleanup             Kill the tmux session
+    ./run --help                Show this help
+
+EXAMPLES:
+    ./run h                     Move west
+    ./run o                     Start opening a door; inspect the direction prompt
+    ./run h                     Answer that prompt with west
+    ./run Space                 Dismiss a pager
+    ./run Escape                Cancel a command
+    ./run '>'                   Descend stairs
+    ./run '#quit'               Extended command (Enter appended automatically)
+    ./run '^P'                  Message history (C-p also works)
+    ./run --batch o h           Open west, only when the input sequence is known
+
+An ACTION can also be literal text or a repeat such as 5k. Such strings send
+multiple keystrokes without intermediate observation; prefer single keys.
+Batch mode captures each argument, but does not decide whether to continue
+when a prompt appears. Avoid batches during exploration or combat.
+Initialization may restore a saved game; it does not delete NetHack saves.
+See README.md and CLAUDE.md for instructions.
+EOF
+}
+
 send_input() {
     local key="$1" literal
+    # Control bytes need send-keys: paste-buffer can turn them into printable
+    # caret notation. Some tmux versions reject send-keys with a read-only
+    # viewer attached; propagate that failure instead of reporting success.
     if [ "$key" = "Escape" ]; then
         tmux send-keys -t "$SESSION_NAME" Escape
         return
     fi
-    # Ctrl key combos, written 'C-x' or '^x' (letter, either case). These must
-    # use send-keys like Escape above: paste-buffer mangles control bytes into
-    # two printable caret-notation characters (0x10 becomes '^' 'P'), so the
-    # game never sees the real control byte.
     if [[ "$key" =~ ^(C-|\^)([A-Za-z])$ ]]; then
         tmux send-keys -t "$SESSION_NAME" "C-${BASH_REMATCH[2],,}"
         return
@@ -50,100 +62,66 @@ send_input() {
     tmux paste-buffer -d -b claude-run-input -t "$SESSION_NAME"
 }
 
+observe() {
+    local screen cursor_x cursor_y cursor
+    # Capture before formatting so a failed capture cannot masquerade as an
+    # empty successful observation. Cursor metadata must also succeed.
+    screen=$(tmux capture-pane -p -t "$SESSION_NAME")
+    cursor=$(tmux display-message -p -t "$SESSION_NAME" '#{cursor_x} #{cursor_y}')
+    read -r cursor_x cursor_y <<< "$cursor"
+    printf '%s\n' "$screen" | python3 "$SCRIPT_DIR/transpose_map.py" --cursor "$cursor_x" "$cursor_y"
+}
 
-# Show help information
-if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
-    cat << 'EOF'
-NetHack tmux Interface - Claude Code NetHack Project
+case "${1:-}" in
+    --help|-h) usage; exit 0 ;;
+    --init|--cleanup)
+        if [ "$#" -ne 1 ]; then
+            echo "$1 does not accept action arguments." >&2
+            exit 2
+        fi
+        if [ "$1" = "--cleanup" ]; then
+            tmux kill-session -t "$SESSION_NAME"
+            exit 0
+        fi
+        if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+            tmux kill-session -t "$SESSION_NAME"
+        fi
+        tmux new-session -d -s "$SESSION_NAME" -x "$SESSION_WIDTH" -y "$SESSION_HEIGHT" \
+            -e 'NETHACKOPTIONS=whatis_coord:m,windowtype:tty' -- \
+            nethack -u Claude -p valkyrie -r human
+        tmux set-option -t "$SESSION_NAME" window-size manual
+        sleep 1
+        # Do not automatically dismiss a startup or restored-game prompt.
+        observe
+        exit 0
+        ;;
+    --batch)
+        shift
+        if [ "$#" -eq 0 ]; then
+            echo '--batch requires at least one action.' >&2
+            exit 2
+        fi
+        ;;
+    --*) echo "Unknown option: $1" >&2; exit 2 ;;
+    *)
+        if [ "$#" -gt 1 ]; then
+            echo 'Send one action and inspect the result, or explicitly use --batch.' >&2
+            exit 2
+        fi
+        ;;
+esac
 
-USAGE:
-    ./run [COMMAND...]           Send commands to NetHack and view current state
-    ./run --init                 Start fresh game (kills existing session)
-    ./run --cleanup              Kill the tmux session completely
-    ./run --help                 Show this help
-
-EXAMPLES:
-    ./run                        View current game state
-    ./run Escape                 Enter Escape key (to cancel)
-    ./run Space                  Enter Space key (to proceed)
-    ./run h j                    Move west, then to south
-    ./run o h                    Open door to the west
-    ./run s                      Search for hidden doors/passages
-    ./run ,                      Pick up items
-    ./run 5k                     Move north 5 times
-    ./run '#quit'                Extended command (Enter is sent automatically)
-    ./run '^P'                   Ctrl+P: view message history (C-p also works)
-
-NETHACK SYMBOLS:
-    @    Claude's position
-    >    Stairs down (goal!)
-    <    Stairs up
-    #    Corridors
-    +    Closed doors
-    $    Gold/treasure
-    %    Enemy corpses
-
-For more information, see README.md and CLAUDE.md
-
-This tool is designed for Claude Code to autonomously play NetHack.
-EOF
+if [ "$#" -eq 0 ]; then
+    observe
     exit 0
 fi
 
-# Add session cleanup option
-if [ "${1:-}" = "--cleanup" ]; then
-    tmux kill-session -t "$SESSION_NAME"
-    exit 0
-fi
-
-# Add session cleanup option
-if [ "${1:-}" = "--init" ]; then
-    if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-        tmux kill-session -t "$SESSION_NAME"
-    fi
-    sleep 0.2
-    # Without this shift, "--init" stays in "$@" and falls through to the
-    # action loop below, which sends it as literal keystrokes to the fresh
-    # session: '-' '-' 'i' 'n' 'i' 't'. On the role-selection menu, 't'
-    # selects Tourist; mid-game, 'i' opens inventory and 't' triggers throw.
-    shift
-fi
-
-# --- Session Management ---
-# Check if the tmux session exists. If not, create it and start NetHack.
-if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    echo "Creating a new tmux session: $SESSION_NAME"
-    tmux new-session -d -s "$SESSION_NAME" -x "$SESSION_WIDTH" -y "$SESSION_HEIGHT" -e "$NETHACK_OPTIONS_ENV" -- "$NETHACK_COMMAND"
-    tmux set-option -t "$SESSION_NAME" window-size manual
-    sleep 1 # Give nethack time to load
-
-    # needs this when resuming the game
-    send_input Space
-fi
-
-# --- Action and State Capture ---
-
-# Loop through each argument provided to the script.
-# This allows us to send them one by one with a delay in between.
 for arg in "$@"; do
-    # Send the current argument (e.g., 'd', then 'a').
     send_input "$arg"
-    # Wait for a short moment to let NetHack process the keystroke.
     sleep "$KEY_DELAY"
-    # Extended commands (e.g. '#quit') open the "#" prompt and only type the
-    # command name; NetHack does not run the command until Enter is pressed.
     if [[ "$arg" == '#'* ]]; then
         send_input Enter
         sleep "$KEY_DELAY"
     fi
+    observe
 done
-
-# Wait a fraction of a second for the screen to update.
-sleep 0.2
-
-# Capture the pane's content and format it for LLM consumption.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SCREEN=$(tmux capture-pane -p -t "$SESSION_NAME")
-CURSOR=$(tmux display-message -p -t "$SESSION_NAME" '#{cursor_x} #{cursor_y}')
-read -r CURSOR_X CURSOR_Y <<< "$CURSOR"
-printf '%s\n' "$SCREEN" | python3 "$SCRIPT_DIR/transpose_map.py" --cursor "$CURSOR_X" "$CURSOR_Y"

@@ -142,6 +142,48 @@ if command == "display-message":
         result = self.run_interface()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("NW=a N=b NE=c W=d E=e SW=f S=g SE=h", result.stdout)
+        self.assertEqual([call[0] for call in self.calls()], ["capture-pane", "display-message"])
+
+    def test_multiple_actions_require_explicit_batch_before_any_input(self):
+        result = self.run_interface("h", "j")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--batch", result.stderr)
+        self.assertEqual(self.calls(), [])
+
+    def test_batch_captures_between_actions(self):
+        result = self.run_interface("--batch", "h", "j")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([call[0] for call in self.calls()],
+                         ["set-buffer", "paste-buffer", "capture-pane", "display-message"] * 2)
+        self.assertEqual(result.stdout.count("--- Neighborhood of @ ---"), 2)
+
+    def test_batch_stops_on_failed_action(self):
+        self.env["TEST_FAIL"] = "paste-buffer"
+        result = self.run_interface("--batch", "h", "j")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual([call[0] for call in self.calls()], ["set-buffer", "paste-buffer"])
+
+    def test_init_does_not_type_or_dismiss_startup_prompts(self):
+        result = self.run_interface("--init")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        commands = [call[0] for call in self.calls()]
+        self.assertIn("new-session", commands)
+        self.assertNotIn("paste-buffer", commands)
+        self.assertNotIn("send-keys", commands)
+
+    def test_invalid_options_do_not_touch_tmux(self):
+        for args in [("--batch",), ("--unknown",), ("--init", "h"), ("--cleanup", "h")]:
+            with self.subTest(args=args):
+                self.assertEqual(self.run_interface(*args).returncode, 2)
+                self.assertEqual(self.calls(), [])
+
+    def test_extended_command_appends_return_before_observation(self):
+        result = self.run_interface("#quit")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([call[-1] for call in self.calls() if call[0] == "set-buffer"],
+                         ["#quit", "\r"])
+        self.assertEqual([call[0] for call in self.calls()],
+                         ["set-buffer", "paste-buffer"] * 2 + ["capture-pane", "display-message"])
 
 
 if __name__ == "__main__":
