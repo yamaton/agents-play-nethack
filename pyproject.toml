@@ -1,0 +1,7 @@
+[project]
+name = "claude-code-nethack"
+version = "0.1.0"
+description = "Terminal tooling for agent-driven NetHack gameplay"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []

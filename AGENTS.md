@@ -7,7 +7,7 @@ to start or reset a game.
 ## Development
 
 - Use `uv` for Python commands. The formatter declares its dependencies inline.
-- Run `uv run --no-project python -B -m unittest discover -s tests -v` after changes.
+- Run `uv run --locked python -B -m unittest discover -s tests -v` after changes.
 - Check shell changes with `bash -n run` and `shellcheck run` when available.
 - Tests use an isolated tmux stub; do not reset a live game for testing.
 

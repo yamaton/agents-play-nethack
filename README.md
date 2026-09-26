@@ -12,6 +12,7 @@ https://github.com/user-attachments/assets/090a868a-2536-4936-80aa-cd6365d9ee07
 Install NetHack, tmux, Bash, and `uv`, with `nethack` and `tmux` on `PATH`.
 The formatter uses Python 3.13+ and the standard library. `uv` selects the
 interpreter from its inline script metadata; no Python packages are required.
+The project manifest and `uv.lock` likewise declare no third-party dependencies.
 
 Read [AGENTS.md](AGENTS.md) for gameplay and development instructions. If your
 harness does not automatically discover it, explicitly ask the agent to read it.
@@ -98,14 +99,14 @@ sandbox requirements.
 ## Development checks
 
 ```bash
-uv run --no-project python -B -m unittest discover -s tests -v
+uv run --locked python -B -m unittest discover -s tests -v
 bash -n run
 shellcheck run
 ```
 
 The tests use fixtures and a temporary tmux stub, so they neither start NetHack
-nor touch live sessions. `--no-project` keeps the standard-library test suite
-independent of experimental local project dependencies.
+nor touch live sessions. `--locked` verifies that the project manifest and
+lockfile agree before running the standard-library test suite.
 
 For a longer game, keep run-specific observations in a separate notes file,
 including character, dungeon level, current objective, and unresolved risks.
