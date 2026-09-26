@@ -71,9 +71,27 @@ send_input() {
     tmux paste-buffer -d -b claude-run-input -t "$SESSION_NAME"
 }
 
+check_exit() {
+    local state dead status signal screen
+    state=$(tmux display-message -p -t "$SESSION_NAME" '#{pane_dead}:#{pane_dead_status}:#{pane_dead_signal}')
+    IFS=: read -r dead status signal <<< "$state"
+    if [ "$dead" = 1 ]; then
+        screen=$(tmux capture-pane -p -t "$SESSION_NAME")
+        printf '%s\n' "$screen" | uv run --script "$SCRIPT_DIR/transpose_map.py"
+        if [ "$status" = 0 ] && [ -z "$signal" ]; then
+            printf '%s\n' '--- Game exited normally ---'
+            exit 0
+        fi
+        printf 'Game exited abnormally (status: %s; signal: %s).\n' \
+            "${status:-unknown}" "${signal:-none}" >&2
+        exit 1
+    fi
+}
+
 observe() {
     local screen cursor_x cursor_y cursor
     local -a formatter_args=()
+    check_exit
     # Capture before formatting so a failed capture cannot masquerade as an
     # empty successful observation. Only the optional helper needs a cursor.
     screen=$(tmux capture-pane -p -t "$SESSION_NAME")
@@ -108,6 +126,7 @@ case "${1:-}" in
             -e 'NETHACKOPTIONS=whatis_coord:m,windowtype:tty' -- \
             nethack -u Claude -p valkyrie -r human
         tmux set-option -t "$SESSION_NAME" window-size manual
+        tmux set-option -p -t "$SESSION_NAME" remain-on-exit on
         sleep 1
         # Do not automatically dismiss a startup or restored-game prompt.
         observe
@@ -135,6 +154,9 @@ if [ "$#" -eq 0 ]; then
     exit 0
 fi
 
+# Retain exit status even for games started by older versions of this tool.
+tmux set-option -p -t "$SESSION_NAME" remain-on-exit on
+check_exit
 action_index=0
 for arg in "$@"; do
     action_index=$((action_index + 1))

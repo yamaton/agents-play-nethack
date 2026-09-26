@@ -30,6 +30,10 @@ Initialization requests a human Valkyrie. Read and answer any character or
 restore prompts individually; do not blindly send a fixed selection sequence.
 Observe an existing session before deciding whether to initialize it. Save
 with `S` and answer any confirmation before ending a game you want to keep.
+Normal process exits return success with `--- Game exited normally ---` and
+stop any remaining batch actions. The final pane is retained for observation;
+use `--init` to play again or `--cleanup` to remove it. This exit message alone
+does not prove that a save was written. Abnormal exits still return failure.
 
 ### Action Discipline
 - Prefer one key per call, then inspect messages, HP, and the input prompt.

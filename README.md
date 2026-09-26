@@ -60,6 +60,10 @@ intermediate observation.
 
 Failures return a nonzero status. Some input may already have reached the game
 before a later operation fails; re-observe before deciding whether to retry.
+When the game exits with status zero, the runner shows the final screen and
+`--- Game exited normally ---`, returns success, and stops any remaining batch
+actions. This reports process completion; it does not by itself verify a save.
+Abnormal exits and tmux connection failures still return failure.
 
 ## Reading the screen
 
@@ -96,6 +100,12 @@ The detached tmux game survives individual agent shell calls. The historical
 session name `claude-nethack` and character name `Claude` are retained for
 compatibility with existing sessions and saves; they do not require a particular
 agent harness. Only one controller should send input to a game at a time.
+
+Initialization and action calls enable tmux's `remain-on-exit` for the game
+pane so its final screen and exit status remain available. After the game
+ends, `./run` can inspect that pane again; use `--cleanup` to remove it or
+`--init` to launch NetHack again. Actions sent to an already finished pane
+report its exit instead of sending input.
 
 ```bash
 tmux attach-session -t claude-nethack -r

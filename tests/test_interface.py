@@ -89,7 +89,8 @@ class RunnerTests(unittest.TestCase):
         self.log = self.directory / "calls.jsonl"
         self.env = dict(os.environ, PATH=self.tmp.name + os.pathsep + os.environ["PATH"],
                         TEST_LOG=str(self.log), TEST_SCREEN="\n".join(gameplay_screen()),
-                        TEST_FAIL="", TEST_SESSION_EXISTS="1")
+                        TEST_FAIL="", TEST_SESSION_EXISTS="1", TEST_DEAD="0",
+                        TEST_EXIT_STATUS="0", TEST_EXIT_SIGNAL="", TEST_EXIT_ON_INPUT="")
         stub = self.directory / "tmux"
         stub.write_text(f"#!{sys.executable}\n" + '''import json, os, sys
 with open(os.environ["TEST_LOG"], "a") as log:
@@ -103,7 +104,16 @@ if command == "has-session":
 if command == "capture-pane":
     print(os.environ["TEST_SCREEN"])
 if command == "display-message":
-    print("8 4")
+    if "pane_dead" in sys.argv[-1]:
+        from pathlib import Path
+        exited = Path(os.environ["TEST_LOG"] + ".exited").exists()
+        dead = "1" if exited else os.environ["TEST_DEAD"]
+        print(":".join([dead, os.environ["TEST_EXIT_STATUS"], os.environ["TEST_EXIT_SIGNAL"]]))
+    else:
+        print("8 4")
+if command == "paste-buffer" and os.environ["TEST_EXIT_ON_INPUT"]:
+    from pathlib import Path
+    Path(os.environ["TEST_LOG"] + ".exited").touch()
 ''')
         stub.chmod(0o755)
         sleep = self.directory / "sleep"
@@ -119,6 +129,7 @@ if command == "display-message":
 
     def test_input_and_observation_failures_are_nonzero_and_stop(self):
         for command, args in [
+            ("set-option", ["h"]),
             ("send-keys", ["Escape"]), ("set-buffer", ["h"]),
             ("paste-buffer", ["h"]), ("capture-pane", []),
             ("display-message", ["--neighborhood"]),
@@ -144,17 +155,18 @@ if command == "display-message":
                 self.assertEqual(self.calls()[-1][0], command)
 
     def test_default_observation_is_plain_and_does_not_query_cursor(self):
-        self.env["TEST_FAIL"] = "display-message"
         result = self.run_interface()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, self.env["TEST_SCREEN"] + "\n")
-        self.assertEqual([call[0] for call in self.calls()], ["capture-pane"])
+        self.assertEqual([call[0] for call in self.calls()], ["display-message", "capture-pane"])
+        self.assertNotIn("cursor_x", self.calls()[0][-1])
 
     def test_optional_neighborhood_uses_cursor_metadata(self):
         result = self.run_interface("--neighborhood")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("NW=a N=b NE=c W=d E=e SW=f S=g SE=h", result.stdout)
-        self.assertEqual([call[0] for call in self.calls()], ["capture-pane", "display-message"])
+        self.assertEqual([call[0] for call in self.calls()],
+                         ["display-message", "capture-pane", "display-message"])
 
     def test_optional_neighborhood_after_action_does_not_send_flag(self):
         result = self.run_interface("--neighborhood", "h")
@@ -172,7 +184,8 @@ if command == "display-message":
         result = self.run_interface("--batch", "h", "j")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([call[0] for call in self.calls()],
-                         ["set-buffer", "paste-buffer", "capture-pane"] * 2)
+                         ["set-option", "display-message"]
+                         + ["set-buffer", "paste-buffer", "display-message", "capture-pane"] * 2)
         self.assertEqual(result.stdout,
                          "--- Action 1/2: 'h' ---\n" + self.env["TEST_SCREEN"] + "\n"
                          "--- Action 2/2: 'j' ---\n" + self.env["TEST_SCREEN"] + "\n")
@@ -194,7 +207,8 @@ if command == "display-message":
         self.env["TEST_FAIL"] = "paste-buffer"
         result = self.run_interface("--batch", "h", "j")
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual([call[0] for call in self.calls()], ["set-buffer", "paste-buffer"])
+        self.assertEqual([call[0] for call in self.calls()],
+                         ["set-option", "display-message", "set-buffer", "paste-buffer"])
         self.assertEqual(result.stdout, "--- Action 1/2: 'h' ---\n")
 
     def test_init_does_not_type_or_dismiss_startup_prompts(self):
@@ -217,7 +231,38 @@ if command == "display-message":
         self.assertEqual([call[-1] for call in self.calls() if call[0] == "set-buffer"],
                          ["#quit", "\r"])
         self.assertEqual([call[0] for call in self.calls()],
-                         ["set-buffer", "paste-buffer"] * 2 + ["capture-pane"])
+                         ["set-option", "display-message"]
+                         + ["set-buffer", "paste-buffer"] * 2 + ["display-message", "capture-pane"])
+
+    def test_normal_exit_stops_batch_and_preserves_final_screen(self):
+        self.env["TEST_EXIT_ON_INPUT"] = "1"
+        result = self.run_interface("--neighborhood", "--batch", "y", "j")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "--- Action 1/2: 'y' ---\n"
+                         + self.env["TEST_SCREEN"] + "\n--- Game exited normally ---\n")
+        self.assertEqual(self.calls()[0],
+                         ["set-option", "-p", "-t", "claude-nethack", "remain-on-exit", "on"])
+        self.assertEqual([call[-1] for call in self.calls() if call[0] == "set-buffer"], ["y"])
+
+    def test_finished_pane_can_be_observed_without_sending_more_input(self):
+        self.env["TEST_DEAD"] = "1"
+        for args in [(), ("h",)]:
+            with self.subTest(args=args):
+                result = self.run_interface(*args)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("--- Game exited normally ---", result.stdout)
+                self.assertNotIn("set-buffer", [call[0] for call in self.calls()])
+
+    def test_abnormal_exit_is_not_reported_as_success(self):
+        self.env["TEST_DEAD"] = "1"
+        for status, signal in [("7", ""), ("", "15"), ("", "")]:
+            with self.subTest(status=status, signal=signal):
+                self.env["TEST_EXIT_STATUS"] = status
+                self.env["TEST_EXIT_SIGNAL"] = signal
+                result = self.run_interface()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Game exited abnormally", result.stderr)
+                self.assertNotIn("Game exited normally", result.stdout)
 
 
 if __name__ == "__main__":
