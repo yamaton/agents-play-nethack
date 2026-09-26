@@ -49,7 +49,11 @@ resets a session; if none exists, initialize explicitly.
 
 Only one action argument is accepted by default. `./run o h` now fails before
 sending input. An intentional sequence uses `./run --batch o h`, which prints
-the screen after each argument. It still continues automatically when a prompt
+the screen after each argument. Each action has a numbered header, such as
+`--- Action 1/2: 'o' ---`, printed before input is sent. Headers use Bash shell
+quoting to keep whitespace and control characters readable; they describe the
+literal argument, not its meaning in the current game prompt. Single-action
+calls retain their original output. Batch mode still continues automatically when a prompt
 appears, so prefer separate calls during exploration and combat. A single
 argument such as `5k` or literal text also sends multiple keystrokes without
 intermediate observation.

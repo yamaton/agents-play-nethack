@@ -173,7 +173,17 @@ if command == "display-message":
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([call[0] for call in self.calls()],
                          ["set-buffer", "paste-buffer", "capture-pane"] * 2)
-        self.assertEqual(result.stdout, (self.env["TEST_SCREEN"] + "\n") * 2)
+        self.assertEqual(result.stdout,
+                         "--- Action 1/2: 'h' ---\n" + self.env["TEST_SCREEN"] + "\n"
+                         "--- Action 2/2: 'j' ---\n" + self.env["TEST_SCREEN"] + "\n")
+
+    def test_batch_labels_escape_control_characters_without_changing_input(self):
+        action = "name\n\t\x1b'"
+        result = self.run_interface("--batch", action)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[0],
+                         "--- Action 1/1: $'name\\n\\t\\E\\'' ---")
+        self.assertEqual([call[-1] for call in self.calls() if call[0] == "set-buffer"], [action])
 
     def test_optional_neighborhood_applies_to_each_batch_capture(self):
         result = self.run_interface("--neighborhood", "--batch", "h", "j")
@@ -185,6 +195,7 @@ if command == "display-message":
         result = self.run_interface("--batch", "h", "j")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual([call[0] for call in self.calls()], ["set-buffer", "paste-buffer"])
+        self.assertEqual(result.stdout, "--- Action 1/2: 'h' ---\n")
 
     def test_init_does_not_type_or_dismiss_startup_prompts(self):
         result = self.run_interface("--init")

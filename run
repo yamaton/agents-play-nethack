@@ -7,6 +7,7 @@ SESSION_HEIGHT=60
 KEY_DELAY=0.3
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SHOW_NEIGHBORHOOD=false
+BATCH_MODE=false
 
 usage() {
     cat <<'EOF'
@@ -40,7 +41,7 @@ EXAMPLES:
 
 An ACTION can also be literal text or a repeat such as 5k. Such strings send
 multiple keystrokes without intermediate observation; prefer single keys.
-Batch mode captures each argument, but does not decide whether to continue
+Batch mode labels and captures each argument, but does not decide whether to continue
 when a prompt appears. Avoid batches during exploration or combat.
 Initialization may restore a saved game; it does not delete NetHack saves.
 See README.md and AGENTS.md for setup and gameplay instructions.
@@ -113,6 +114,7 @@ case "${1:-}" in
         exit 0
         ;;
     --batch)
+        BATCH_MODE=true
         shift
         if [ "$#" -eq 0 ]; then
             echo '--batch requires at least one action.' >&2
@@ -133,7 +135,12 @@ if [ "$#" -eq 0 ]; then
     exit 0
 fi
 
+action_index=0
 for arg in "$@"; do
+    action_index=$((action_index + 1))
+    if [ "$BATCH_MODE" = true ]; then
+        printf -- '--- Action %d/%d: %s ---\n' "$action_index" "$#" "${arg@Q}"
+    fi
     send_input "$arg"
     sleep "$KEY_DELAY"
     if [[ "$arg" == '#'* ]]; then
