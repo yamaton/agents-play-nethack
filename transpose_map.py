@@ -1,102 +1,83 @@
 #!/usr/bin/env python3
-"""Format NetHack screen output for LLM consumption.
+"""Preserve a NetHack tty capture and append a cursor-verified neighborhood.
 
-Processes raw tmux capture output into:
-1. Original screen, preserving all columns and internal blank rows
-2. Neighborhood of @ (5x5 grid + labeled 3x3)
+The default tty map occupies columns 0..79 and screen rows 1..21. Without
+cursor metadata or a recognizable gameplay screen, show only the capture.
 """
 
+import argparse
+import re
 import sys
 
 MAP_WIDTH = 80
-
-STATUS_MARKERS = ["Dlvl:", "HP:", "Pw:", "AC:", "Xp:"]
-
-
-def is_status_line(line):
-    return any(m in line for m in STATUS_MARKERS)
+MAP_TOP = 1
+MAP_HEIGHT = 21
+STATUS_RE = re.compile(r"HP:\s*\d+\s*\(\s*\d+\).*Pw:.*AC:")
+PAGER_RE = re.compile(r"--More--|\(end\)|\(\d+ of \d+\)", re.IGNORECASE)
 
 
-def is_map_line(line):
-    """Heuristic: map lines contain wall, corridor, or dungeon feature characters."""
-    s = line.strip()
-    if not s:
-        return False
-    has_wall = "|" in s or ("--" in s and not s.startswith("--More"))
-    has_corridor = "#" in s
-    has_player = "@" in s
-    has_stairs = ">" in s or "<" in s
-    return has_wall or has_corridor or has_player or has_stairs
-
-
-def extract_map(lines):
-    """Return the contiguous map region as a list of strings."""
-    first = None
-    last = None
-    for i, line in enumerate(lines):
-        if is_status_line(line):
-            continue
-        if is_map_line(line):
-            if first is None:
-                first = i
-            last = i
-    if first is None:
-        return []
-    return lines[first : last + 1]
-
-
-def find_player(map_lines):
-    """Find the (row, col) position of @ in the map, or None."""
-    for r, line in enumerate(map_lines):
-        c = line.find("@")
-        if c != -1:
-            return r, c
-    return None
-
-
-def cell_at(map_lines, r, c):
-    """Get the character at (r, c), or space if out of bounds."""
-    if 0 <= r < len(map_lines) and 0 <= c < len(map_lines[r]):
-        return map_lines[r][c]
+def cell_at(lines, row, col):
+    if 0 <= row < len(lines) and 0 <= col < len(lines[row]):
+        return lines[row][col]
     return " "
 
 
-def print_neighborhood(map_lines):
-    """Print a 5x5 grid around @ and label the 8 adjacent cells."""
-    pos = find_player(map_lines)
-    if pos is None:
-        return
-    pr, pc = pos
+def find_player(lines, cursor):
+    """Locate the cursor's @ on a normal tty map; do not guess from glyphs."""
+    if cursor is None:
+        return None
+    col, row = cursor
+    if not (0 <= col < MAP_WIDTH and MAP_TOP <= row < MAP_TOP + MAP_HEIGHT):
+        return None
+    if cell_at(lines, row, col) != "@":
+        return None
+    if not any(STATUS_RE.search(line) for line in lines[MAP_TOP + MAP_HEIGHT:]):
+        return None
+    if any(PAGER_RE.search(line) for line in lines):
+        return None
+    # Right-hand text or a question makes the input mode uncertain. Keep
+    # the original screen, without labeling it as a modal menu.
+    if any(line[MAP_WIDTH:].strip() for line in lines):
+        return None
+    if lines and ("?" in lines[0] or lines[0].rstrip().endswith(":") or "#" in lines[0]):
+        return None
+    return row, col
+
+
+def print_neighborhood(lines, pos):
+    row, col = pos
+    map_lines = [line[:MAP_WIDTH] for line in lines[MAP_TOP:MAP_TOP + MAP_HEIGHT]]
+    row -= MAP_TOP
     print("--- Neighborhood of @ ---")
     for dr in range(-2, 3):
-        cells = " ".join(cell_at(map_lines, pr + dr, pc + dc) for dc in range(-2, 3))
-        if dr == 0:
-            print(f"W {cells} E")
-        else:
-            print(f"  {cells}")
+        cells = " ".join(cell_at(map_lines, row + dr, col + dc) for dc in range(-2, 3))
+        print(f"W {cells} E" if dr == 0 else f"  {cells}")
     labels = [
         ("NW", -1, -1), ("N", -1, 0), ("NE", -1, 1),
         ("W", 0, -1), ("E", 0, 1),
         ("SW", 1, -1), ("S", 1, 0), ("SE", 1, 1),
     ]
-    print(" ".join(f"{d}={cell_at(map_lines, pr+dr, pc+dc)}" for d, dr, dc in labels))
+    print(" ".join(
+        f"{direction}={cell_at(map_lines, row + dr, col + dc)}"
+        for direction, dr, dc in labels
+    ))
 
 
 def main():
-    raw_lines = sys.stdin.read().splitlines()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cursor", nargs=2, type=int, metavar=("X", "Y"),
+                        help="zero-based tmux cursor coordinates")
+    args = parser.parse_args()
+    lines = sys.stdin.read().splitlines()
     # Trim only unused terminal rows at the end. Whitespace between rooms
     # is not a reliable menu boundary; retain the entire original screen.
-    while raw_lines and not raw_lines[-1].strip():
-        raw_lines.pop()
-    for line in raw_lines:
+    while lines and not lines[-1].strip():
+        lines.pop()
+    for line in lines:
         print(line)
-
-    # Right-hand text makes the input mode uncertain. Do not invent a modal
-    # label or a neighborhood while such a panel is visible.
-    if not any(line[MAP_WIDTH:].strip() for line in raw_lines):
-        extracted = extract_map(raw_lines)
-        if extracted and find_player(extracted):
-            print_neighborhood(extracted)
+    pos = find_player(lines, args.cursor)
+    if pos is not None:
+        print_neighborhood(lines, pos)
 
 
 if __name__ == "__main__":

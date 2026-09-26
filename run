@@ -10,7 +10,7 @@ SESSION_NAME="claude-nethack"
 # viewer with a different terminal width attaches.
 SESSION_WIDTH=154
 SESSION_HEIGHT=60
-NETHACK_OPTIONS_ENV="NETHACKOPTIONS=whatis_coord:m"
+NETHACK_OPTIONS_ENV="NETHACKOPTIONS=whatis_coord:m,windowtype:tty"
 NETHACK_COMMAND="nethack -u Claude -p valkyrie -r human"
 KEY_DELAY=0.3
 
@@ -140,4 +140,6 @@ sleep 0.2
 
 # Capture the pane's content and format it for LLM consumption.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-tmux capture-pane -p -t "$SESSION_NAME" | python3 "$SCRIPT_DIR/transpose_map.py"
+CURSOR=$(tmux display-message -p -t "$SESSION_NAME" '#{cursor_x} #{cursor_y}') || exit $?
+read -r CURSOR_X CURSOR_Y <<< "$CURSOR"
+tmux capture-pane -p -t "$SESSION_NAME" | python3 "$SCRIPT_DIR/transpose_map.py" --cursor "$CURSOR_X" "$CURSOR_Y"
