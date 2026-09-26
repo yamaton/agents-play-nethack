@@ -27,6 +27,7 @@ Start with a prompt such as:
 ```bash
 ./run --init             # Launch NetHack; replaces the existing tmux session
 ./run                    # Observe an existing session without sending input
+./run --neighborhood     # Opt in to the neighborhood and adjacent-cell labels
 ./run h                  # Move west, then inspect the result
 ./run o                  # Request opening a door; inspect the direction prompt
 ./run h                  # Answer that prompt with west
@@ -63,8 +64,12 @@ internal blank rows. It removes only unused blank terminal rows at the end.
 It does not split text at guessed menu boundaries or label arbitrary right-hand
 text as a modal prompt.
 
-When the cursor points to `@` in the standard tty map and the status is visible,
-`transpose_map.py` can append a 5×5 neighborhood and labeled adjacent cells.
+The default output is just the original screen. For extra spatial detail, put
+`--neighborhood` first: `./run --neighborhood`, `./run --neighborhood h`, or
+`./run --neighborhood --batch o h`. The option applies only to that invocation.
+
+With this option, when the cursor points to `@` in the standard tty map and the
+status is visible, the formatter can append a 5×5 neighborhood and labeled adjacent cells.
 Recognized prompts, pagers, and right-hand panels suppress this helper. It also
 stays absent when the cursor, layout, or player glyph cannot be verified.
 Always read the actual prompt before choosing an action.

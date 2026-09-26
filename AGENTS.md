@@ -22,6 +22,7 @@ live screen for current progress; these instructions do not record a run's state
 - `./run --init` — launch NetHack (kills the existing tmux session; may restore a save)
 - `./run` — view an existing game (no input sent, no automatic session creation)
 - `./run h` — send one action and inspect the resulting screen
+- `./run --neighborhood` — observe with the optional 5x5 neighborhood and adjacent-cell labels
 - `./run --batch o h` — explicitly send a known sequence, capturing after each argument
 - `./run --cleanup` — kill the tmux session
 
@@ -42,9 +43,13 @@ with `S` and answer any confirmation before ending a game you want to keep.
 - Use one controller per game; simultaneous drivers can interleave inputs.
 
 ### Output Format
-`./run` prints:
-1. **Original screen** — complete text, map, and status, preserving columns and internal blank rows
-2. **Neighborhood of @**, when verified — a 5x5 visual grid and labeled adjacent cells (e.g. `NW=. N=< NE=\| W=. E=. SW=. S=. SE=.`)
+`./run` prints only the **original screen** by default: complete text, map, and
+status, preserving columns and internal blank rows. Start with this view.
+
+When additional spatial detail is useful, put `--neighborhood` first, as in
+`./run --neighborhood`, `./run --neighborhood h`, or
+`./run --neighborhood --batch o h`. This optionally appends a 5x5 grid and
+labeled adjacent cells (e.g. `NW=. N=< NE=\| W=. E=. SW=. S=. SE=.`).
 
 The helper uses the tmux cursor, the standard tty map area, and the status line
 to locate the player. It omits the neighborhood on recognized prompts, pagers,
@@ -57,9 +62,9 @@ Read the actual prompt before moving. Use `Space` for a `--More--` pager and
 a modal menu is open, and a neighborhood is not proof that movement is safe.
 
 ### Reading the Output
-- **Neighborhood line**: the quickest way to check adjacent cells — read `NW=` `N=` `NE=` etc. directly
-- **5x5 grid**: for slightly wider spatial context (2 cells in each direction)
 - **Original map**: for full-map W/E and N/S awareness and overall layout
+- **Optional neighborhood line**: check adjacent cells using `NW=` `N=` `NE=` etc.
+- **Optional 5x5 grid**: for spatial context within 2 cells of the player
 
 ### Key Commands
 - `h j k l` — move W/S/N/E

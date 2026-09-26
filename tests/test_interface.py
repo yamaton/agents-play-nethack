@@ -116,7 +116,7 @@ if command == "display-message":
         for command, args in [
             ("send-keys", ["Escape"]), ("set-buffer", ["h"]),
             ("paste-buffer", ["h"]), ("capture-pane", []),
-            ("display-message", []),
+            ("display-message", ["--neighborhood"]),
         ]:
             with self.subTest(command=command):
                 self.env["TEST_FAIL"] = command
@@ -138,11 +138,24 @@ if command == "display-message":
                 self.assertNotEqual(result.returncode, 0)
                 self.assertEqual(self.calls()[-1][0], command)
 
-    def test_successful_observation_uses_cursor_metadata(self):
+    def test_default_observation_is_plain_and_does_not_query_cursor(self):
+        self.env["TEST_FAIL"] = "display-message"
         result = self.run_interface()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, self.env["TEST_SCREEN"] + "\n")
+        self.assertEqual([call[0] for call in self.calls()], ["capture-pane"])
+
+    def test_optional_neighborhood_uses_cursor_metadata(self):
+        result = self.run_interface("--neighborhood")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("NW=a N=b NE=c W=d E=e SW=f S=g SE=h", result.stdout)
         self.assertEqual([call[0] for call in self.calls()], ["capture-pane", "display-message"])
+
+    def test_optional_neighborhood_after_action_does_not_send_flag(self):
+        result = self.run_interface("--neighborhood", "h")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--- Neighborhood of @ ---", result.stdout)
+        self.assertEqual([call[-1] for call in self.calls() if call[0] == "set-buffer"], ["h"])
 
     def test_multiple_actions_require_explicit_batch_before_any_input(self):
         result = self.run_interface("h", "j")
@@ -154,7 +167,12 @@ if command == "display-message":
         result = self.run_interface("--batch", "h", "j")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([call[0] for call in self.calls()],
-                         ["set-buffer", "paste-buffer", "capture-pane", "display-message"] * 2)
+                         ["set-buffer", "paste-buffer", "capture-pane"] * 2)
+        self.assertEqual(result.stdout, (self.env["TEST_SCREEN"] + "\n") * 2)
+
+    def test_optional_neighborhood_applies_to_each_batch_capture(self):
+        result = self.run_interface("--neighborhood", "--batch", "h", "j")
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.count("--- Neighborhood of @ ---"), 2)
 
     def test_batch_stops_on_failed_action(self):
@@ -183,7 +201,7 @@ if command == "display-message":
         self.assertEqual([call[-1] for call in self.calls() if call[0] == "set-buffer"],
                          ["#quit", "\r"])
         self.assertEqual([call[0] for call in self.calls()],
-                         ["set-buffer", "paste-buffer"] * 2 + ["capture-pane", "display-message"])
+                         ["set-buffer", "paste-buffer"] * 2 + ["capture-pane"])
 
 
 if __name__ == "__main__":

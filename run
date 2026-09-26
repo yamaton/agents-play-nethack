@@ -6,6 +6,7 @@ SESSION_WIDTH=154
 SESSION_HEIGHT=60
 KEY_DELAY=0.3
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SHOW_NEIGHBORHOOD=false
 
 usage() {
     cat <<'EOF'
@@ -19,6 +20,10 @@ USAGE:
     ./run --cleanup             Kill the tmux session
     ./run --help                Show this help
 
+Add --neighborhood before an action or session option to append the optional
+5x5 neighborhood and adjacent-cell labels when the player can be verified.
+The default output contains only the original screen.
+
 EXAMPLES:
     ./run h                     Move west
     ./run o                     Start opening a door; inspect the direction prompt
@@ -29,6 +34,9 @@ EXAMPLES:
     ./run '#quit'               Extended command (Enter appended automatically)
     ./run '^P'                  Message history (C-p also works)
     ./run --batch o h           Open west, only when the input sequence is known
+    ./run --neighborhood        Observe with the optional neighborhood
+    ./run --neighborhood h      Move west and show the neighborhood
+    ./run --neighborhood --batch o h
 
 An ACTION can also be literal text or a repeat such as 5k. Such strings send
 multiple keystrokes without intermediate observation; prefer single keys.
@@ -64,13 +72,22 @@ send_input() {
 
 observe() {
     local screen cursor_x cursor_y cursor
+    local -a formatter_args=()
     # Capture before formatting so a failed capture cannot masquerade as an
-    # empty successful observation. Cursor metadata must also succeed.
+    # empty successful observation. Only the optional helper needs a cursor.
     screen=$(tmux capture-pane -p -t "$SESSION_NAME")
-    cursor=$(tmux display-message -p -t "$SESSION_NAME" '#{cursor_x} #{cursor_y}')
-    read -r cursor_x cursor_y <<< "$cursor"
-    printf '%s\n' "$screen" | uv run --script "$SCRIPT_DIR/transpose_map.py" --cursor "$cursor_x" "$cursor_y"
+    if [ "$SHOW_NEIGHBORHOOD" = true ]; then
+        cursor=$(tmux display-message -p -t "$SESSION_NAME" '#{cursor_x} #{cursor_y}')
+        read -r cursor_x cursor_y <<< "$cursor"
+        formatter_args=(--cursor "$cursor_x" "$cursor_y")
+    fi
+    printf '%s\n' "$screen" | uv run --script "$SCRIPT_DIR/transpose_map.py" "${formatter_args[@]}"
 }
+
+if [ "${1:-}" = "--neighborhood" ]; then
+    SHOW_NEIGHBORHOOD=true
+    shift
+fi
 
 case "${1:-}" in
     --help|-h) usage; exit 0 ;;
