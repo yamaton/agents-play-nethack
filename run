@@ -9,7 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
     cat <<'EOF'
-NetHack tmux Interface - Claude Code NetHack Project
+NetHack tmux interface for terminal-capable agents
 
 USAGE:
     ./run                       Observe an existing game (no input sent)
@@ -35,7 +35,7 @@ multiple keystrokes without intermediate observation; prefer single keys.
 Batch mode captures each argument, but does not decide whether to continue
 when a prompt appears. Avoid batches during exploration or combat.
 Initialization may restore a saved game; it does not delete NetHack saves.
-See README.md and CLAUDE.md for instructions.
+See README.md and AGENTS.md for setup and gameplay instructions.
 EOF
 }
 
