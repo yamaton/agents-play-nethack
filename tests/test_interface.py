@@ -1,8 +1,11 @@
 """Offline regression tests; no live tmux server or NetHack game is used."""
 
 from pathlib import Path
+import json
+import os
 import subprocess
 import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +74,74 @@ class PlayerDetectionTests(unittest.TestCase):
         lines[1] = "@."
         output = format_screen(lines, "--cursor", "0", "1")
         self.assertIn("NW=  N=  NE=  W=  E=.", output)
+
+
+class RunnerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="nethack-interface-test-")
+        self.addCleanup(self.tmp.cleanup)
+        self.directory = Path(self.tmp.name)
+        self.log = self.directory / "calls.jsonl"
+        self.env = dict(os.environ, PATH=self.tmp.name + os.pathsep + os.environ["PATH"],
+                        TEST_LOG=str(self.log), TEST_SCREEN="\n".join(gameplay_screen()),
+                        TEST_FAIL="", TEST_SESSION_EXISTS="1")
+        stub = self.directory / "tmux"
+        stub.write_text(f"#!{sys.executable}\n" + '''import json, os, sys
+with open(os.environ["TEST_LOG"], "a") as log:
+    log.write(json.dumps(sys.argv[1:]) + "\\n")
+command = sys.argv[1]
+if command == os.environ["TEST_FAIL"]:
+    print(command + " failed", file=sys.stderr)
+    sys.exit(7)
+if command == "has-session":
+    sys.exit(0 if os.environ["TEST_SESSION_EXISTS"] == "1" else 1)
+if command == "capture-pane":
+    print(os.environ["TEST_SCREEN"])
+if command == "display-message":
+    print("8 4")
+''')
+        stub.chmod(0o755)
+        sleep = self.directory / "sleep"
+        sleep.write_text("#!/bin/sh\nexit 0\n")
+        sleep.chmod(0o755)
+
+    def run_interface(self, *args):
+        return subprocess.run(["bash", str(ROOT / "run"), *args], env=self.env,
+                              text=True, capture_output=True)
+
+    def calls(self):
+        return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
+
+    def test_input_and_observation_failures_are_nonzero_and_stop(self):
+        for command, args in [
+            ("send-keys", ["Escape"]), ("set-buffer", ["h"]),
+            ("paste-buffer", ["h"]), ("capture-pane", []),
+            ("display-message", []),
+        ]:
+            with self.subTest(command=command):
+                self.env["TEST_FAIL"] = command
+                result = self.run_interface(*args)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(command + " failed", result.stderr)
+                self.assertEqual(self.calls()[-1][0], command)
+                self.assertNotIn("Neighborhood", result.stdout)
+
+    def test_session_mutation_failures_are_nonzero_and_stop(self):
+        for command, args in [
+            ("kill-session", ["--cleanup"]), ("kill-session", ["--init"]),
+            ("new-session", ["--init"]), ("set-option", ["--init"]),
+        ]:
+            with self.subTest(command=command, args=args):
+                self.env["TEST_FAIL"] = command
+                self.env["TEST_SESSION_EXISTS"] = "0" if command in ("new-session", "set-option") else "1"
+                result = self.run_interface(*args)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.calls()[-1][0], command)
+
+    def test_successful_observation_uses_cursor_metadata(self):
+        result = self.run_interface()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("NW=a N=b NE=c W=d E=e SW=f S=g SE=h", result.stdout)
 
 
 if __name__ == "__main__":

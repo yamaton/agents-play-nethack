@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # --- Configuration ---
 SESSION_NAME="claude-nethack"
@@ -51,7 +52,7 @@ send_input() {
 
 
 # Show help information
-if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     cat << 'EOF'
 NetHack tmux Interface - Claude Code NetHack Project
 
@@ -90,14 +91,16 @@ EOF
 fi
 
 # Add session cleanup option
-if [ "$1" = "--cleanup" ]; then
-    tmux kill-session -t "$SESSION_NAME" 2>/dev/null
+if [ "${1:-}" = "--cleanup" ]; then
+    tmux kill-session -t "$SESSION_NAME"
     exit 0
 fi
 
 # Add session cleanup option
-if [ "$1" = "--init" ]; then
-    tmux kill-session -t "$SESSION_NAME" 2>/dev/null
+if [ "${1:-}" = "--init" ]; then
+    if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+        tmux kill-session -t "$SESSION_NAME"
+    fi
     sleep 0.2
     # Without this shift, "--init" stays in "$@" and falls through to the
     # action loop below, which sends it as literal keystrokes to the fresh
@@ -140,6 +143,7 @@ sleep 0.2
 
 # Capture the pane's content and format it for LLM consumption.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CURSOR=$(tmux display-message -p -t "$SESSION_NAME" '#{cursor_x} #{cursor_y}') || exit $?
+SCREEN=$(tmux capture-pane -p -t "$SESSION_NAME")
+CURSOR=$(tmux display-message -p -t "$SESSION_NAME" '#{cursor_x} #{cursor_y}')
 read -r CURSOR_X CURSOR_Y <<< "$CURSOR"
-tmux capture-pane -p -t "$SESSION_NAME" | python3 "$SCRIPT_DIR/transpose_map.py" --cursor "$CURSOR_X" "$CURSOR_Y"
+printf '%s\n' "$SCREEN" | python3 "$SCRIPT_DIR/transpose_map.py" --cursor "$CURSOR_X" "$CURSOR_Y"
