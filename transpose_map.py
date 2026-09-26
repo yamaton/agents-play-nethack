@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.13"
+# dependencies = []
+# ///
 """Preserve a NetHack tty capture and append a cursor-verified neighborhood.
 
 The default tty map occupies columns 0..79 and screen rows 1..21. Without

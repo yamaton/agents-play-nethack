@@ -69,7 +69,7 @@ observe() {
     screen=$(tmux capture-pane -p -t "$SESSION_NAME")
     cursor=$(tmux display-message -p -t "$SESSION_NAME" '#{cursor_x} #{cursor_y}')
     read -r cursor_x cursor_y <<< "$cursor"
-    printf '%s\n' "$screen" | python3 "$SCRIPT_DIR/transpose_map.py" --cursor "$cursor_x" "$cursor_y"
+    printf '%s\n' "$screen" | uv run --script "$SCRIPT_DIR/transpose_map.py" --cursor "$cursor_x" "$cursor_y"
 }
 
 case "${1:-}" in
