@@ -1,5 +1,7 @@
 # Agents Play NetHack
 
+Formerly `claude-code-nethack`; existing GitHub repository links redirect here.
+
 A small tmux interface that lets a terminal-capable agent play NetHack. The
 agent sends an action, reads the screen, and decides what to do next. The
 same commands work across coding-agent harnesses.

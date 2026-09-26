@@ -1,5 +1,5 @@
 [project]
-name = "claude-code-nethack"
+name = "agents-play-nethack"
 version = "0.1.0"
 description = "Terminal tooling for agent-driven NetHack gameplay"
 readme = "README.md"
